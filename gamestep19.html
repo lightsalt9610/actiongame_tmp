@@ -1,0 +1,1337 @@
+<!-- 完成品 -->
+
+
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <!-- phaserの読み込み-->
+    <script src="//cdn.jsdelivr.net/npm/phaser@3.24.1/dist/phaser.js"></script>
+</head>
+<body>
+    <script type="text/javascript">
+
+//クラス部分
+//config・変数宣言部分
+//preload部分　画像の読み込みはこちら
+//create部分
+//update部分
+//関数定義部分
+
+        //弾の処理のクラス
+        class Bullet extends Phaser.Physics.Arcade.Sprite
+        {
+            constructor (scene, x, y)
+            {
+                super(scene, x, y, 'bullet');
+            }
+
+            fire (chara, angle)
+            {
+                this.setPosition(chara.x, chara.y);
+                this.setActive(true);
+                this.setVisible(true);
+                this.setRotation(angle);
+                this.setDepth(4)
+                this.setVelocityX(bspead_n * Math.cos(angle));
+                this.setVelocityY(bspead_n * Math.sin(angle));
+                this.body.setAllowGravity(false);
+            }
+
+            preUpdate (time, delta)
+            {
+                super.preUpdate(time, delta);
+                if (this.x <= camera_xl + (800 - cameraActiveAreaX) || this.y <= camera_yu + (800 - cameraActiveAreaY) || this.x >= camera_xl + cameraActiveAreaX || this.y >= camera_yu + cameraActiveAreaY)
+                {
+                    this.setActive(false);
+                    this.setVisible(false);
+                    this.destroy();
+                }
+            }
+        }
+
+        //HPバーの処理のクラス
+        class HealthBar extends Phaser.GameObjects.Graphics {
+            constructor(scene, x, y, value, size) {
+                super(scene, x, y);
+                this.value = value;
+                this.value_d = value;
+                this.size = size
+                this.p = size / this.value;
+                this.h = size / 15;
+                scene.add.existing(this);
+            }
+
+            decrease(amount) {
+                this.value -= amount;
+                
+                if (this.value < 0) {
+                    this.value = 0;
+                }
+                return (this.value === 0);
+            }
+
+            draw(x, y) {
+                this.clear();
+                this.fillStyle(0xff0000);
+                this.fillRect(x, y, this.size, this.h);
+
+                this.fillStyle(0x00ff00);
+                var d = Math.floor(this.p * this.value);
+                this.fillRect(x, y, d, this.h);
+            }
+
+            reset() {
+                this.value = this.value_d
+            }  
+        }
+        //エネルギーゲージ
+        class Stamina extends Phaser.GameObjects.Graphics {
+            constructor(scene, x, y) {
+                super(scene, x, y);
+                this.value = 500;
+                this.value_d = 500;
+                this.p = 0.6;
+                this.h = 16;
+                scene.add.existing(this);
+            }
+
+            decrease(amount) {
+                this.value -= amount;
+                
+                if (this.value < 0) {
+                    this.value = 0;
+                }
+                return (this.value === 0);
+            }
+
+            draw(x, y) {
+                this.clear();
+                this.fillStyle(0x000000);
+                this.fillRect(x, y, 300, this.h);
+
+
+                this.fillStyle(0xff5900);
+                var d = Math.floor(this.p * this.value);
+                this.fillRect(x, y, d, this.h);
+            }
+
+            reset() {
+                this.value = this.value_d
+            }
+        }
+
+        //敵の処理クラス
+        class Enemy extends Phaser.Physics.Arcade.Sprite 
+        {
+            constructor(scene, x, y) {
+                super(scene, x, y, 'enemy1');
+                this.health = new HealthBar(this.scene, this.x, this.y, 150, 120);
+            }
+
+            spawnEvent(x, y) {
+                this.setPosition(x, y);
+                this.setActive(true);
+                this.setVisible(true);
+                this.setDepth(4);
+                this.setBounce(0.2);
+                this.setCollideWorldBounds(true);
+                this.setDragX(10);
+            }
+
+            preUpdate(time, delta) {
+                super.preUpdate(time, delta)
+                if (this.active) {
+                    this.health.draw(this.x - 60, this.y - 50);
+                }
+            }
+        }
+
+        class Block extends Phaser.Physics.Arcade.Sprite
+        {
+            constructor(scene, x, y) {
+                super(scene, x, y, 'box');
+                this.value = 50;
+                // this.setImmovable(true);
+                // this.setMaxVelocity(0, 0);
+            }
+
+            set(x, y) {
+                this.setPosition(x, y);
+                this.setActive(true);
+                this.setVisible(true);
+                this.setImmovable(true);
+                this.setMaxVelocity(0, 0);
+            }
+
+            decrease(amount) {
+                this.value -= amount;
+                
+                if (this.value < 0) {
+                    this.value = 0;
+                }
+                return (this.value === 0);
+            }
+        }
+
+        //砲台の処理クラス
+        class Turret extends Phaser.Physics.Arcade.Sprite
+        {
+            constructor(scene, x, y) {
+                super(scene, x, y, 'turret');
+            }
+
+            setOn(x, y) {
+                this.setPosition(x, y);
+                this.setActive(true);
+                this.setVisible(true);
+                this.body.setAllowGravity(false);
+                this.setRotation(angle_pp);
+            }
+
+            preUpdate(time, delta) {
+                super.preUpdate(time, delta)
+            }
+        }
+
+        //コア部分
+        var config = {
+            type: Phaser.AUTO,
+            width: 800,
+            height: 600,
+            physics: {
+                default: "arcade",
+                arcade: {
+                    gravity: {y: 1000},
+                    debug: false
+                }
+            },
+            scene: {
+                preload: preload,
+                create: create,
+                update: update
+            }
+        };
+        //プレイヤー関連
+        let player;
+        let playerHealth;
+        let playerStamina;
+        let playerBullets;
+        let playerTurrets;
+        let player_dashed = true;
+        var playerTurrets_handover = 3;
+
+        //エネミー関連
+        let enemy;
+        let enemyHealth;
+        let enemyBullets;
+        var box;
+        let poison;
+        let boss;
+        let bossHealth;
+        var boss_activate = false;
+        var boss_timer = 0;
+
+        //ポインター関連
+        let cursors;
+        let mouses;
+        let forcus;
+        let pointer;
+
+        //その他
+        let platforms; //地面など
+        let stairs;
+        let close_d;
+        let open_d;
+        let door;
+        let switch_d;
+        let bossEncountZone;
+        let bossDoor;
+
+        var collider_bf;
+        let angle_pp; //プレイヤーとポインターの角度
+        let angle_pe; //プレイヤーとエネミーの角度
+        let testText; //テキスト（未使用
+        let bspead_n = 500; //弾速
+        let turret_timer_events = []; //砲台の発射を管理するグループ
+        let mainCamera;
+        var cameraActiveAreaX = 800;
+        var cameraActiveAreaY = 900;
+
+        let score = 0;
+        let scoreArea;
+        let scoretext;
+        let gameClock = 0;
+        let minuteClock = 0;
+        let timertext;
+        var timerStopper = false;
+        
+        let clear;
+        let retry;
+        let gameover;
+        //ゲームオブジェクトの生成
+        var game = new Phaser.Game(config);
+
+        //画像などの読み込み
+        function preload(){
+            //背景の画像
+            this.load.image('back', './back.png');
+            this.load.image('tutorial1', './tutorial_m.png');
+            this.load.image('tutorial2', './tutorial_s.png');
+            this.load.image('tutorial3', './tutorial_d.png');
+            this.load.image('tutorial4', './tutorial_n.png');
+            this.load.image('tutorial5', './tutorial_t.png');
+            this.load.image('tutorial6', './tutorial_r.png');
+            this.load.image('tutorial7', './tutorial_u.png');
+            this.load.image('tutorial8', './tutorial_e.png');
+            this.load.image('door', './door.png');
+            this.load.image('close', './closed.png');
+            this.load.image('open', './open.png');
+            this.load.spritesheet('switch', './button_open.png', {frameWidth: 100, frameHeight: 30});
+            this.load.image('clear', './clear.png');
+            this.load.image('retry', './retry.png');
+            this.load.image('gameover', './gameover.png');
+            //地面の画像
+            this.load.image('ground11', './ground11.png');
+            this.load.image('stair', './stair.png');
+            this.load.spritesheet('bossdoor', './bossdoor.png', {frameWidth: 180, frameHeight: 200});
+            //プレイヤーキャラクターの画像　フレーム範囲を指定する
+            this.load.spritesheet('ego_9', './player_t.png', {frameWidth: 32, frameHeight: 48});
+            //弾
+            this.load.image('bullet', './bullet.png');
+            this.load.image('bullet_b', './bullet_b.png');
+            this.load.image('turret', './turret.png');
+            this.load.spritesheet('slash', './slash.png', {frameWidth: 29, frameHeight: 43});
+            //敵(仮)
+            this.load.image('enemy', './e_neutral_t.png');
+            this.load.image('enemy1', './enemy1_neutral_t.png');
+            this.load.image('box', './box.png');
+            this.load.image('boss', './boss.png');
+            this.load.image('boss_t', './boss_t.png');
+            this.load.image('poison', './damagearea.png');
+            this.load.image('danger', './dangermark.png');
+        }
+
+        function create(){
+            this.physics.world.fixedStep = true;
+            this.physics.world.addListener('bossActivateEvent', bossActivateEvent, this);
+            
+            scoreArea = this.add.rectangle(675, 30, 250, 60, '0xf0f0f0');
+            scoreArea.setDepth(50);
+            scoreArea.setScrollFactor(0, 0);
+            
+            scoretext = this.add.text(550, 8, 'score:' + String(score));
+            scoretext.setScale(1.5, 1.5);
+            scoretext.setDepth(60);
+            scoretext.setScrollFactor(0, 0);
+            scoretext.setColor('0x000000');
+
+            timertext = this.add.text(550, 24, 'time:' + String(gameClock));
+            timertext.setScale(1.5, 1.5);
+            timertext.setDepth(60);
+            timertext.setScrollFactor(0, 0);
+            timertext.setColor('0x000000');
+
+            mainCamera = this.cameras.main;
+            mainCamera.setBounds(0, 0, 800 * 7, 600 * 4);
+            this.physics.world.setBounds(0, 0, 800 * 7, 600 * 4);
+            //背景画像の位置
+            this.add.image(400,300,'back').setScrollFactor(0, 0);
+            //地面の画像と物理エンジン適用
+            platforms = this.physics.add.staticGroup();
+            stairs = this.physics.add.staticGroup();
+            enemy_stairs = this.physics.add.staticGroup();
+
+            //setScaleでサイズを拡大して配置、したならstaticならrefreshBodyが必要
+            //底床
+            platforms.create(2800, 2300, "ground11").setScale(7, 1).setDepth(10).refreshBody();
+            //P
+            platforms.create(800, 1700, "ground11").setScale(2, 1).setDepth(10).refreshBody();
+            platforms.create(800 / 6, 2000, "ground11").setScale(1/3, 2).setDepth(10).refreshBody();
+            platforms.create(800 * 5 / 3, 1900, "ground11").setScale(2/3, 1).setDepth(10).refreshBody();
+            this.add.image(440, 2000, 'tutorial1');
+            this.add.image(800, 2000, 'tutorial2');
+            this.add.image(800 + 1600/3, 2100, 'tutorial8');
+            //E1
+            platforms.create(800 * 8 / 3, 1500, "ground11").setScale(2, 1).setDepth(10).refreshBody();
+            platforms.create(400 * 23 / 3, 2000, "ground11").setScale(1, 2).setDepth(10).refreshBody();
+            stairs.create((8000 / 3) - 100, 1800 + 10, "stair").setScale(2, 1).setDepth(4).refreshBody();
+            enemy_stairs.create((8000 / 3) - 100, 1800 + 10, "stair").setScale(2, 1).setDepth(4).refreshBody();
+            stairs.create((8000 / 3) - 50, 1800 + (200 / 3) + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+            stairs.create((8000 / 3) - 50, 1800 + (400 / 3) + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+            stairs.create((8000 / 3) - 100, 2000 + 10, "stair").setScale(2, 1).setDepth(4).refreshBody();
+            stairs.create((8000 / 3) - 50, 2000 + (200 / 3) + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+            stairs.create((8000 / 3) - 50, 2000 + (400 / 3) + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+            stairs.create((8000 / 3) - 400, 1800 + 10, "stair").setScale(3, 1).setDepth(4).refreshBody();
+            
+            
+            this.add.image(1800, 2000, 'tutorial3');
+            this.add.image(2600, 1700, 'tutorial5');
+            this.add.image(2900, 1700, 'tutorial6');
+            
+            //E2
+            stairs.create(3200 - 50, 1600 + (400 / 3) + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+            stairs.create(3200 - 50, 1600 + (200 / 3) + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+            stairs.create(3200 - 400 / 6, 1600 + 10, "stair").setScale(4/3, 1).setDepth(4).refreshBody();
+            stairs.create(3200 - 50, 1400 + (400 / 3) + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+            stairs.create(3200 - 50, 1400 + (200 / 3) + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+            stairs.create(3200 - 800 / 6, 1400 + 10, "stair").setScale(8/3, 1).setDepth(4).refreshBody();
+            platforms.create(2800, 900, "ground11").setScale(1/3, 1).setDepth(10).refreshBody();
+            platforms.create(4000 * 5 / 6, 1400, "ground11").setScale(1/3, 4).setDepth(10).refreshBody();
+            platforms.create(400 * 17 / 3, 900, "ground11").setScale(1, 1).setDepth(10).refreshBody();
+            stairs.create(3200 - 50, 1200 + (400 / 3) + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+            stairs.create(3200 - 50, 1200 + (200 / 3) + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+            stairs.create(3200 - 400 / 6, 1200 + 10, "stair").setScale(4/3, 1).setDepth(4).refreshBody();
+            stairs.create(3200 - 50, 1000 + (400 / 3) + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+            stairs.create(3200 - 50, 1000 + (200 / 3) + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+            stairs.create(3200 - 800 / 6, 1000 + 10, "stair").setScale(8/3, 1).setDepth(4).refreshBody();
+            stairs.create(3200 - 50, 800 + (400 / 3) + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+            stairs.create(3200 - 50, 800 + (200 / 3) + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+            stairs.create(3200 - 800 / 6, 800 + 10, "stair").setScale(8/3, 1).setDepth(4).refreshBody();
+
+            //E3
+            platforms.create(400 * 17 / 3, 400, "ground11").setScale(1, 2).setDepth(10).refreshBody();
+            platforms.create(1600, 100, "ground11").setScale(4, 1).setDepth(10).refreshBody();
+            this.add.image(3000, 600, 'tutorial4');
+            door = this.physics.add.staticImage(3300, 700, 'door');
+            close_d = this.add.image(3200 + 25 + 10, 600 - 25 - 10, 'close').setDepth(30);
+            //E4
+            platforms.create(1000, 1200, "ground11").setScale(8/3, 2).setDepth(10).refreshBody();
+            platforms.create(400, 900, "ground11").setScale(1, 1).setDepth(10).refreshBody();
+            platforms.create(800 / 6, 500, "ground11").setScale(1/3, 3).setDepth(10).refreshBody();
+            platforms.create(800 * 2 / 3, 300, "ground11").setScale(2/3, 1).setDepth(10).refreshBody();
+            platforms.create(400 * 5 / 3, 500, "ground11").setScale(1/3, 1).setDepth(10).refreshBody();
+            stairs.create(1600 + 800 / 6, 800, "stair").setScale(8/3, 1).setDepth(4).refreshBody();
+            enemy_stairs.create(1600 + 800 / 6, 800, "stair").setScale(8/3, 1).setDepth(4).refreshBody();
+            stairs.create(1600 / 3 + 800 + 50, 600 + (100 / 3) + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+            stairs.create(1600 / 3 + 800 + 50, 600 - (100 / 3) + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+            stairs.create(1600 / 3 + 800 - 800 / 18, 500 + 10, "stair").setScale(3, 1).setDepth(4).refreshBody();
+            enemy_stairs.create(1600 / 3 + 800 - 800 / 18, 500 + 10, "stair").setScale(3, 1).setDepth(4).refreshBody();
+            stairs.create(800 + 50, 600 + (400 / 3) + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+            stairs.create(800 + 50, 600 + (200 / 3) + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+            stairs.create(800 + 100, 600 + 10, "stair").setScale(2, 1).setDepth(4).refreshBody();
+            enemy_stairs.create(800 + 100, 600 + 10, "stair").setScale(2, 1).setDepth(4).refreshBody();
+            stairs.create(800 + 50, 800, "stair").setScale(1, 1).setDepth(4).refreshBody();
+            stairs.create(400, 600 + 10, "stair").setScale(8/3, 1).setDepth(4).refreshBody();
+            poison = this.physics.add.staticImage(4000 / 3, 900, "poison").setScale(4/3, 1).setDepth(24).refreshBody();
+            this.add.image(1750, 650, 'danger');
+            close_d = this.add.image(800 - 35, 600 - 25 - 10, 'close').setDepth(30);
+            switch_d = this.physics.add.staticSprite(400, 800 - 15, 'switch').setDepth(21);
+            //E5
+            this.add.image(3600 + 800/3 - 10, 700, "tutorial7");
+            stairs.create(3600 + 800/3, 800 + 10, "stair").setScale(8/3, 1).setDepth(4).refreshBody();
+            enemy_stairs.create(3600 + 800/3, 800 + 10, "stair").setScale(8/3, 1).setDepth(4).refreshBody();
+            stairs.create(4000 - 50, 800 + (200 / 3) + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+            stairs.create(4000 - 50, 800 + (400 / 3) + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+            stairs.create(4000 - 50, 1000 + (200 / 3) + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+            stairs.create(4000 - 50, 1000 + (400 / 3) + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+            stairs.create(4000 - 50 * 4/3, 1000 + 10, "stair").setScale(4/3, 1).setDepth(4).refreshBody();
+            platforms.create(4000 * 5 / 6, 300, "ground11").setScale(1/3, 3).setDepth(10).refreshBody();
+            platforms.create(400 * 31 / 3, 300, "ground11").setScale(5/3, 3).setDepth(10).refreshBody();
+            platforms.create(800 * 13 / 3, 900, "ground11").setScale(2/3, 1).setDepth(10).refreshBody();
+            platforms.create(800 * 16 / 3, 1100, "ground11").setScale(2/3, 5).setDepth(10).refreshBody();
+            stairs.create(3200 + 1600 / 3 - 50, 1200 + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+            stairs.create(3200 + 800 / 3 + 50, 1200 + (400 / 3) + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+            stairs.create(3200 + 1600 / 3 - 50, 1400 + (200 / 3) + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+            stairs.create(3200 + 800 / 3 + 50, 1600 + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+            stairs.create(3200 + 1600 / 3 - 50, 1600 + (400 / 3) + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+            stairs.create(3200 + 800 / 3 + 50, 1800 + (200 / 3) + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+            stairs.create(3200 + 1600 / 3 - 50, 2000 + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+            stairs.create(3200 + 800 / 3 + 50, 2000 + (300 / 3) + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+    
+            enemy_stairs.create(3200 + 1600 / 3 - 50, 1200 + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+            enemy_stairs.create(3200 + 800 / 3 + 50, 1200 + (400 / 3) + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+            enemy_stairs.create(3200 + 1600 / 3 - 50, 1400 + (200 / 3) + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+            enemy_stairs.create(3200 + 800 / 3 + 50, 1600 + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+            enemy_stairs.create(3200 + 1600 / 3 - 50, 1600 + (400 / 3) + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+            enemy_stairs.create(3200 + 800 / 3 + 50, 1800 + (200 / 3) + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+            enemy_stairs.create(3200 + 1600 / 3 - 50, 2000 + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+            enemy_stairs.create(3200 + 800 / 3 + 50, 2000 + (300 / 3) + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+
+            //Boss
+            bossEncountZone = this.add.zone(4100 + 30, 2100, 200, 200);
+            this.physics.add.existing(bossEncountZone, true);
+            bossDoor = this.physics.add.staticSprite(3200 + 2000 / 3, 2100, "bossdoor");
+            platforms.create(400 * 29 / 3, 1600, "ground11").setScale(1/3, 4).setDepth(10).refreshBody();
+            platforms.create(400 * 41 / 3, 1400, "ground11").setScale(1/3, 10).setDepth(10).refreshBody();
+            platforms.create(5200, 1000, "ground11").setScale(1/3, 6).setDepth(10).refreshBody();
+            platforms.create(400 * 37 / 3, 1200, "ground11").setScale(1/3, 4).setDepth(10).refreshBody();
+            platforms.create(400 * 35 / 3, 1375, "ground11").setScale(1/3, 2).setDepth(10).refreshBody();
+            stairs.create(4000 + 50, 2100 + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+            stairs.create(4000 + 4000 / 18, 2000 + 10, "stair").setScale(8/3, 1).setDepth(4).refreshBody();
+            stairs.create(4000 + 50, 1900 + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+            stairs.create(4000 + 4000 / 18, 1800 + 10, "stair").setScale(8/3, 1).setDepth(4).refreshBody();
+            stairs.create(4000 + 50, 1700 + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+
+            stairs.create(4800 + 1600 / 3 - 50, 2100 + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+            stairs.create(4800 + 1600 / 3 - 4000 / 18, 2000 + 10, "stair").setScale(8/3, 1).setDepth(4).refreshBody();
+            stairs.create(4800 + 1600 / 3 - 50, 1900 + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+            stairs.create(4800 + 1600 / 3 - 4000 / 18, 1800 + 10, "stair").setScale(8/3, 1).setDepth(4).refreshBody();
+            stairs.create(4800 + 1600 / 3 - 50, 1700 + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+
+            stairs.create(4000 + 4000 / 9 - 50, 1800 + (400 / 3) + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+            stairs.create(4000 + 4000 / 9 + 50, 1800 + (200 / 3) + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+            stairs.create(4800 + 1600 / 3 - 4000 / 9 + 50, 1800 + (400 / 3) + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+            stairs.create(4800 + 1600 / 3 - 4000 / 9 - 50, 1800 + (200 / 3) + 10, "stair").setScale(1, 1).setDepth(4).refreshBody();
+            stairs.create(4800 - 400 / 3, 1800 + 10, "stair").setScale(8/3, 1).setDepth(4).refreshBody();
+            enemy_stairs.create(4800 - 400 / 3, 1800 + 10, "stair").setScale(8/3, 1).setDepth(4).refreshBody();
+    
+            //プレイヤーキャラクターの設置
+            player = this.physics.add.sprite(800 * 5 / 6, 2176, "ego_9");
+            // player = this.physics.add.sprite(800 * 5 - 100, 2176, "ego_9");
+            player.setDepth(5);
+            player.setDragX(1000);
+            player.useDamping = true;
+            //衝突と反射の設定
+            player.setCollideWorldBounds(true);
+
+            playerHealth = new HealthBar(this, 10, 10, 300, 360);
+            // playerHealth = new HealthBar(this, 10, 10, 30, 360);
+            playerHealth.setScrollFactor(0, 0);
+            playerHealth.setDepth(20);
+            playerStamina = new Stamina(this, 42, 10);
+            playerStamina.setScrollFactor(0, 0);
+            playerStamina.setDepth(21);
+
+            playerTurrets = this.physics.add.group({
+                classType: Turret,
+                runChildUpdate: true,
+                maxSize: 3
+            });
+
+            turretBullets = this.physics.add.group({
+                classType: Bullet,
+                runChildUpdate: true,
+            });
+
+            this.anims.create({
+                key: 'switchPushEvent',
+                frames: this.anims.generateFrameNumbers("switch", {start:0, end:4}),
+                duration: 400,
+                repeat: 0,
+            });
+
+            this.anims.create({
+                key: 'bossDoorClosed',
+                frames: this.anims.generateFrameNumbers("bossdoor", {start:0, end:8}),
+                duration: 800,
+                repeat: 0,
+            });
+
+            //プレイヤーキャラクターと地面との間に物理判定を設定
+            this.physics.add.collider(player, platforms);
+            this.physics.add.collider(player, stairs);
+            for (stair of stairs.getChildren()) {
+                stair.body.checkCollision.down = false;
+                stair.body.checkCollision.right = false;
+                stair.body.checkCollision.left = false;
+            }
+            this.physics.add.collider(player, door);
+
+            this.physics.add.overlap(player, poison, function(){
+                playerHealth.decrease(1);
+            }, null, this);
+            var overlap_pb = this.physics.add.overlap(player, switch_d, function(){
+                switch_d.play('switchPushEvent');
+                close_d.destroy();
+                this.add.image(3200 + 25 + 10, 600 - 25 - 10, 'open').setDepth(30);
+                this.add.image(800 - 35, 600 - 25 - 10, 'open').setDepth(30);
+                door.destroy();
+                overlap_pb.destroy();
+            }, null, this);
+
+            forcus = this.add.line(0, 0, 0, 0, 800, 0, "0xff0000");
+            forcus.setOrigin(0);
+
+            //敵のデータ生成
+            enemyGroup = this.physics.add.group({
+                classType: Enemy,
+                runChildUpdate: true
+            });
+
+            boss = this.physics.add.sprite(4800 - 800 / 6, 1800, 'boss_t');
+            boss.setDepth(3);
+            boss.setCollideWorldBounds();
+            boss.setBounce(0);
+            boss.setDragX(100);
+            this.physics.add.collider(boss, platforms);
+            bossHealth = new HealthBar(this, 10, 10, 3000, 600);
+            // bossHealth = new HealthBar(this, 10, 10, 300, 600);
+            bossHealth.setScrollFactor(0, 0);
+            bossHealth.setDepth(20);
+
+            //弾のクラスのグループ生成
+            playerBullets = this.physics.add.group({
+                classType: Bullet,
+                runChildUpdate: true
+            });
+
+            enemyBullets = this.physics.add.group({
+                classType: Bullet,
+                runChildUpdate: true
+            });
+
+            //障害物
+            boxes = this.physics.add.group({
+                classType: Block,
+                runChildUpdate: true
+            });
+            // P
+            var box = boxes.get();
+            box.set(800 * 61 / 48, 2050);
+            var box = boxes.get();
+            box.set(800 * 67 / 48, 2050);
+            var box = boxes.get();
+            box.set(800 * 73 / 48, 2050);
+            var box = boxes.get();
+            box.set(800 * 61 / 48, 2150);
+            var box = boxes.get();
+            box.set(800 * 67 / 48, 2150);
+            var box = boxes.get();
+            box.set(800 * 73 / 48, 2150);
+            // E1
+            var box = boxes.get();
+            box.set(1600 + 800 * 2 / 3 + 50, 2150);
+            var box = boxes.get();
+            box.set(1600 + 800 * 2 / 3 + 150, 2150);
+            var box = boxes.get();
+            box.set(1600 + 800 * 2 / 3 + 150, 2050);
+            var box = boxes.get();
+            box.set(1600 + 800 * 2 / 3 + 250, 2150);
+            var box = boxes.get();
+            box.set(1600 + 800 * 2 / 3 + 250, 2050);
+            var box = boxes.get();
+            box.set(1600 + 800 * 2 / 3 + 350, 2150);
+            // E2
+            var box = boxes.get();
+            box.set(2400 - 50, 1350);
+            var box = boxes.get();
+            box.set(2400 + 50, 1350);
+            var box = boxes.get();
+            box.set(2400 + 150, 1350);
+            var box = boxes.get();
+            box.set(2400 + 250, 1350);
+            var box = boxes.get();
+            box.set(2400 + 350, 1350);
+            var box = boxes.get();
+            box.set(2400 + 450, 1350);
+            var box = boxes.get();
+            box.set(2400 - 50, 1250);
+            var box = boxes.get();
+            box.set(2400 + 50, 1250);
+            var box = boxes.get();
+            box.set(2400 + 150, 1250);
+            var box = boxes.get();
+            box.set(2400 + 250, 1250);
+            var box = boxes.get();
+            box.set(2400 + 350, 1250);
+            var box = boxes.get();
+            box.set(2400 + 50, 1150);
+            var box = boxes.get();
+            box.set(2400 + 150, 1150);
+            var box = boxes.get();
+            box.set(2400 + 150, 1050);
+
+            for(box of boxes.getChildren()) {
+                this.physics.add.collider(box, platforms);
+                this.physics.add.collider(player, box);
+            }
+            // this.physics.add.collider(box, platforms);
+            // this.physics.add.collider(player, box);
+
+            mainCamera.startFollow(player);
+
+            //キー入力に対するアクションの設定
+            this.anims.create({
+                key: "left",
+                frames: this.anims.generateFrameNumbers("ego_9", {start:3, end:0}),
+                frameRate: 5,
+                repeat: 0,
+                yoyo: true
+            });
+
+            this.anims.create({
+                key: 'turn',
+                frames: [{key: 'ego_9', frame: 4}],
+                frameRate: 20
+            });
+
+            this.anims.create({
+                key: "right",
+                frames: this.anims.generateFrameNumbers("ego_9", {start:5, end:8}),
+                frameRate: 5,
+                repeat: 0,
+                yoyo: true
+            });
+
+            //近接
+            this.anims.create({
+                key: 'slashing',
+                frames: this.anims.generateFrameNumbers("slash", {start:5, end:9}),
+                duration: 100,
+                repeat: 0,
+                hideOnComplete: true,
+            });
+
+            this.anims.create({
+                key: 'slashing_r',
+                frames: this.anims.generateFrameNumbers("slash", {start:4, end:0}),
+                duration: 100,
+                repeat: 0,
+                hideOnComplete: true,
+            });
+
+            //クリックによる動作
+            this.input.on('pointerdown', function(pointer){
+                //ホイールボタン：砲台設置
+                if (pointer.middleButtonDown()){
+                    var turret = playerTurrets.get();
+
+                    if (turret) {
+                        turret.setOn(player.x, player.y);
+                        turret_timer_events.push(this.time.addEvent({ delay: 500,
+                        callback: turretFireEvent,
+                        args: [turret, turretBullets, enemyGroup, platforms, boxes],
+                        callbackScope: this, loop: true}));
+                    }
+                    playerTurrets_handover -= 1;
+                    //ライトボタン：ダッシュムーブ
+                } else if (pointer.rightButtonDown()){
+                        if (player_dashed && playerStamina.value >= 150) {
+                        player_dashed = false;
+                        if (pointer.x > player.x) {
+                            player.setVelocityX(640 * Math.cos(angle_pp));
+                            player.setVelocityY(640 * Math.sin(angle_pp));
+                        } else {
+                            player.setVelocityX(640 * Math.cos(angle_pp));
+                            player.setVelocityY(640 * Math.sin(angle_pp));
+                        }
+                        playerStamina.value -= 150;
+                        this.time.delayedCall(500, function(){
+                            player_dashed = true
+                        });
+                    }
+                    //レフトボタン：弾の発射
+                } else {
+                    if (playerTurrets_handover <= 0) {
+                        if (pointer.worldX > player.x) {
+                            var slash = this.physics.add.sprite(player.x + 50, player.y, 'slash').setDepth(12);
+                            slash.anims.play('slashing');
+                        } else {
+                            var slash = this.physics.add.sprite(player.x - 50, player.y, 'slash').setDepth(12);
+                            slash.anims.play('slashing_r');
+                        }
+                        for(enemy_be of enemyGroup.getChildren()) {
+                            var sl_en = this.physics.add.collider(slash, enemy_be, enemySlashHitCallback, function(){
+                                this.physics.world.removeCollider(sl_en);
+                            }, this).overlapOnly = true;
+                        }
+                        if (boss_activate) {
+                            this.physics.add.overlap(slash, boss, bossSlashHitCallback, null, this);
+                        }
+                        this.time.delayedCall(100, function(){
+                            slash.destroy();
+                        });
+                    } else {
+                        if (playerStamina.value >= playerTurrets_handover * 10) {
+                            for (var i=0; i<playerTurrets_handover; i++) {
+                                var bullet = playerBullets.get();
+                                if (playerTurrets_handover == 3) {
+                                    var multiplebulletscope = {
+                                        x: player.x + (-(i * 10) + 10) * Math.sin(angle_pp),
+                                        y: player.y + ((i * 10) - 10) * Math.cos(angle_pp)
+                                    };
+                                } else if (playerTurrets_handover == 2) {
+                                    var multiplebulletscope = {
+                                        x: player.x + (-(i * 10) + 5) * Math.sin(angle_pp),
+                                        y: player.y + ((i * 10) - 5) * Math.cos(angle_pp)
+                                    };
+                                } else if (playerTurrets_handover == 1) {
+                                    var multiplebulletscope = {
+                                        x: player.x,
+                                        y: player.y
+                                    };
+                                }
+
+                                if (bullet) {
+                                    bullet.setDepth(4);
+                                    bullet.fire(multiplebulletscope, angle_pp);
+                                    var collider_bf = this.physics.add.collider(bullet, platforms, groundHitCallback, null, this);
+                                    for(enemy_be of enemyGroup.getChildren()) {
+                                        this.physics.add.collider(bullet, enemy_be, enemyHitCallback, null, this).overlapOnly = true;
+                                    }
+                                    for(box of boxes.getChildren()) {
+                                        this.physics.add.collider(bullet, box, boxHitCallback, null, this);
+                                    }
+                                    if (boss_activate) {
+                                        this.physics.add.overlap(bullet, boss, bossHitCallback, null, this);
+                                    }
+                                } 
+                            }
+                            playerStamina.value -= playerTurrets_handover * 10;
+                        }
+                    }
+                }
+            }, this);
+
+            this.input.keyboard.on('keydown-DOWN', function(){
+                for (let turret_p of playerTurrets.getChildren()) {
+                    turret_p.destroy();
+                }
+                for (let turret_p of playerTurrets.getChildren()) {
+                    turret_p.destroy();
+                }
+                for (var i=0; i<turret_timer_events.length; i++) {
+                    turret_timer_events[i].remove(false);
+                }
+                playerTurrets_handover = 3;
+            });
+            
+            
+
+            var enemys = enemyGroup.get().setActive(true).setVisible(true);
+            enemys.spawnEvent(2000, 2150);
+            var enemys = enemyGroup.get().setActive(true).setVisible(true);
+            enemys.spawnEvent(2500, 1700);
+            var enemys = enemyGroup.get().setActive(true).setVisible(true);
+            enemys.spawnEvent(2300, 1950);
+            var enemys = enemyGroup.get().setActive(true).setVisible(true);
+            enemys.spawnEvent(2400, 1900);
+
+            var enemys = enemyGroup.get().setActive(true).setVisible(true);
+            enemys.spawnEvent(2400 + 1600/3, 1700);
+
+            var enemys = enemyGroup.get().setActive(true).setVisible(true);
+            enemys.spawnEvent(2400 + 4000/9, 1350);
+            var enemys = enemyGroup.get().setActive(true).setVisible(true);
+            enemys.spawnEvent(2800, 1150);
+            var enemys = enemyGroup.get().setActive(true).setVisible(true);
+            enemys.spawnEvent(2700, 1150);
+            var enemys = enemyGroup.get().setActive(true).setVisible(true);
+            enemys.spawnEvent(2400 + 1600/9, 1100);
+            var enemys = enemyGroup.get().setActive(true).setVisible(true);
+
+            enemys.spawnEvent(2800, 750);
+            var enemys = enemyGroup.get().setActive(true).setVisible(true);
+            enemys.spawnEvent(2700, 750);
+            var enemys = enemyGroup.get().setActive(true).setVisible(true);
+            enemys.spawnEvent(2900, 750);
+
+            var enemys = enemyGroup.get().setActive(true).setVisible(true);
+            enemys.spawnEvent(1650, 730);
+            var enemys = enemyGroup.get().setActive(true).setVisible(true);
+            enemys.spawnEvent(800 + 800 * 11/18, 420);
+            var enemys = enemyGroup.get().setActive(true).setVisible(true);
+            enemys.spawnEvent(850, 500);
+
+            var enemys = enemyGroup.get().setActive(true).setVisible(true);
+            enemys.spawnEvent(3200 + 5600/9, 750);
+            var enemys = enemyGroup.get().setActive(true).setVisible(true);
+            enemys.spawnEvent(3200 + 6400/9, 750);
+
+            var enemys = enemyGroup.get().setActive(true).setVisible(true);
+            enemys.spawnEvent(3200 + 800 * 11/18, 1150);
+            var enemys = enemyGroup.get().setActive(true).setVisible(true);
+            enemys.spawnEvent(3200 + 3200/9, 1350);
+            var enemys = enemyGroup.get().setActive(true).setVisible(true);
+            enemys.spawnEvent(3200 + 4000/9, 1500);
+            var enemys = enemyGroup.get().setActive(true).setVisible(true);
+            enemys.spawnEvent(3200 + 3200/9, 1800);
+
+            this.physics.add.collider(enemyGroup, platforms);
+            this.physics.add.collider(enemyGroup, boxes);
+            this.physics.add.collider(enemyGroup, enemy_stairs);
+
+            //カーソル入力の下準備
+            cursors = this.input.keyboard.createCursorKeys();
+            this.input.mouse.disableContextMenu();
+            mouses = this.input.mouse;
+
+            testText = this.add.text(16, 16, '', {
+                fontSize: '20px',
+                fill: '#ff0000'
+            });
+
+            this.time.addEvent({
+                delay: 1500,
+                loop: true,
+                callback: enemyAttacks,
+                args: [player, enemyGroup, platforms, this],
+            });
+            this.time.addEvent({
+                delay: 1500,
+                loop: true,
+                callback: enemyAttacks,
+                args: [player, enemyGroup, platforms, this],
+                startAt: 100,
+            });
+            this.time.addEvent({
+                delay: 1500,
+                loop: true,
+                callback: enemyAttacks,
+                args: [player, enemyGroup, platforms, this],
+                startAt: 200,
+            });
+            
+            var tst = this.physics.add.overlap(player, bossEncountZone, function(){
+                this.physics.world.pause();
+                mainCamera.stopFollow();
+                // mainCamera.zoomTo(2, 200);
+                timerStopper = true;
+                mainCamera.pan(3900, 2100, 200, 'Linear', false, function(camera, progress, x, y){
+                    if (progress == 1) {
+                        bossDoor.anims.play('bossDoorClosed');
+                        this.physics.add.collider(player, bossDoor);
+                        this.time.delayedCall(1000, function(){
+                            mainCamera.zoomTo(1, 500);
+                            mainCamera.pan(boss.x, boss.y, 500, 'Linear', false, function(camera, progress, x, y){
+                                if (progress == 1) {
+                                    this.time.delayedCall(1500, function(){
+                                        // this.physics.world.resume();
+                                        mainCamera.pan(player.x, player.y, 1000, 'Power2', false, function(camera, progress, x, y){
+                                            if (progress == 1) {
+                                                this.physics.world.emit('bossActivateEvent', this);
+                                                this.physics.world.resume();
+                                                mainCamera.startFollow(player);
+                                                timerStopper = false;
+                                            }
+                                        }, this);
+                                        // mainCamera.startFollow(player);
+                                    }, null, this);
+                                }
+                            }, this);
+                            // this.physics.world.resume();
+                            // mainCamera.startFollow(player);
+                        }, null, this);
+                        // this.physics.world.resume();
+                    }
+                }, this);
+                tst.destroy();
+                // this.physics.world.resume();
+            }, null, this);
+        };
+
+        //
+        //  ここからアップデート処理
+        //
+
+        function update() {
+            if (timerStopper == false) {
+                gameClock += 1
+                if (minuteClock >= 99 && gameClock >= 6000) {
+                    timertext.setText('timer   99:99:99')
+                } else if (gameClock < 100) {
+                    timertext.setText('time:   ' + timeRound(minuteClock)+ ':00:' + String(gameClock));
+                } else if (gameClock >= 100 && gameClock < 1000) {
+                    timertext.setText('time:   ' + timeRound(minuteClock)+ ':0' + String(gameClock).slice(0, 1) + ':' + String(gameClock).slice(1, 3));
+                } else if (gameClock >= 1000 && gameClock < 6000) {
+                    timertext.setText('time:   ' + timeRound(minuteClock)+ ':' + String(gameClock).slice(0, 2) + ':' + String(gameClock).slice(2, 4));
+                } else if (gameClock >= 6000) {
+                    gameClock = 0;
+                    minuteClock += 1
+                }
+            }
+            
+
+            //左右キー入力
+            if (cursors.left.isDown)
+            {
+                //横方向への移動速度
+                if (player_dashed) {
+                    player.setVelocityX(-160);
+                }
+                player.anims.play('left', true);
+            } else if (cursors.right.isDown) 
+            {
+                //横方向への移動速度
+                if (player_dashed) {
+                    player.setVelocityX(160);
+                }
+                player.anims.play('right', true);
+            } else {
+                //ニュートラル状態
+                // player.setVelocityX(0);
+                player.anims.play('turn');
+            }
+            //上キーの入力　接地時のみ
+            if (cursors.up.isDown && player.body.touching.down) 
+            {
+                player.setVelocityY(-480);
+            }
+            if (cursors.down.isDown || player_dashed == false && pointer.y > 300) {
+                for (stair of stairs.getChildren()) {
+                    stair.body.checkCollision.up = false;
+                }
+            } else {
+                for (stair of stairs.getChildren()) {
+                    stair.body.checkCollision.up = true;
+                }
+            }
+            pointer = this.input.activePointer;
+            camera_xl = mainCamera.midPoint.x - mainCamera.centerX;
+            camera_yu = mainCamera.midPoint.y - mainCamera.centerY;
+            angle_pp = Phaser.Math.Angle.Between(player.x, player.y, pointer.x + camera_xl, pointer.y + camera_yu);
+            // angle_pe = Phaser.Math.Angle.Between(player.x, player.y, enemy.x, enemy.y);
+            forcus.x = player.x;
+            forcus.y = player.y;
+            forcus.setRotation(angle_pp);
+            playerHealth.draw(0, 0);
+            playerStamina.draw(0, 24);
+
+            if (playerStamina.value < 500) {
+                playerStamina.value += (5 + playerTurrets_handover * 2) / 4;
+            }
+
+            if (boss_activate) {
+                bossHealth.draw(100, 550);
+                leftHand = {
+                    x: boss.x - 55,
+                    y: boss.y - 35,
+                }
+                rightHand = {
+                    x: boss.x + 55,
+                    y: boss.y - 35,
+                }
+                bossHead = {
+                    x: boss.x,
+                    y: boss.y - 135,
+                }
+                boss_timer += 1;
+                if (boss_timer >= 1300) {
+                    boss_timer = 0;
+                } else if (boss_timer <= 150 && boss_timer > 0) {
+                    boss.setVelocityX(-165);
+                } else if (boss_timer == 175 || boss_timer == 185 || boss_timer == 195 || boss_timer == 205 || boss_timer == 215 
+                || boss_timer == 475 || boss_timer == 485 || boss_timer == 495 || boss_timer == 505 || boss_timer == 515 
+                || boss_timer == 875 || boss_timer == 885 || boss_timer == 895 || boss_timer == 905 || boss_timer == 915) {
+                    bossAttacks(player, leftHand, 1, this);
+                    bossAttacks(player, rightHand, 1, this);
+                } else if (boss_timer <= 450 && boss_timer > 300) {
+                    boss.setVelocityX(165);
+                    if (boss_timer == 325 || boss_timer == 350 || boss_timer == 375 || boss_timer == 400 || boss_timer == 425) {
+                        bossAttacks(player, bossHead, 1, this);
+                    }
+                } else if (boss_timer <= 850 && boss_timer > 700) {
+                    boss.setVelocityX(165);
+                    if (boss_timer == 725 || boss_timer == 750 || boss_timer == 775 || boss_timer == 800 || boss_timer == 825) {
+                        bossAttacks(player, bossHead, 1, this);
+                    }
+                } else if (boss_timer <= 1150 && boss_timer > 1000) {
+                    boss.setVelocityX(-165);
+                    if (boss_timer == 1025 || boss_timer == 1050 || boss_timer == 1075 || boss_timer == 1100 || boss_timer == 1125) {
+                        bossAttacks(player, bossHead, 1, this);
+                    }
+                } else if (boss_timer == 600 || boss_timer == 650 || boss_timer == 1200 || boss_timer == 1250) {
+                    bossAttacks(player, leftHand, 2, this);
+                    bossAttacks(player, rightHand, 2, this);
+                    if (boss_timer == 600) {
+                        var enemys = enemyGroup.get().setActive(true).setVisible(true);
+                        enemys.spawnEvent(4000 + 1600/3 + 50, 1300);
+                        var enemys = enemyGroup.get().setActive(true).setVisible(true);
+                        enemys.spawnEvent(4800 - 50, 1300);
+                    }
+                } else {
+                    boss.setVelocityX(0);
+                }
+            }
+
+            scoretext.setText('score:' + String(score));
+        }
+
+        function updateText(isLocked) {
+            testText.setText([""]);
+        }
+
+        function groundHitCallback(bullet, ground) {
+            bullet.destroy();
+            if (bullet.active == false) {
+                this.physics.world.removeCollider(collider_bf);
+            }
+        }
+
+        function enemyHitCallback(bullet, enemy) {
+            if (bullet.active === true) {
+                if (enemy.active === true) {
+                    if (enemy.body.velocity.x === 0) {
+                        if (bullet.x >= enemy.x) {
+                            enemy.setVelocityX(-10);
+                        } else if (bullet.x <= enemy.x) {
+                            enemy.setVelocityX(10);
+                        }
+                    }
+
+                    if (enemy.health.decrease(10)) {
+                        enemy.health.destroy();
+                        enemy.destroy();
+                        score += 1000;                        
+                    }
+                }
+                bullet.destroy();
+            }
+        }
+
+        function enemySlashHitCallback(slash, enemy) {
+            if (slash.active === true) {
+                if (enemy.active === true) {
+                    if (enemy.body.velocity.x === 0) {
+                        if (slash.body.left >= enemy.x) {
+                            enemy.setVelocityX(-10);
+                        } else if (slash.body.left <= enemy.x) {
+                            enemy.setVelocityX(10);
+                        }
+                    }
+
+                    if (enemy.health.decrease(2)) {
+                        enemy.health.destroy();
+                        enemy.destroy();
+                        score += 3000;
+                    }
+                }
+            }
+        }
+
+        function boxHitCallback(bullet, box) {
+            if (bullet.active === true) {
+                if (box.active === true) {
+                    if (box.decrease(10)) {
+                        box.destroy();
+                        // enemyRespawnEvent(enemy, enemy.health);
+                    }
+                }
+                bullet.destroy();
+            }
+        }
+
+        function enemyRespawnEvent(enemy, health) {
+            enemy.setVelocity(0, 0);
+            enemy.setRandomPosition(40, 30, 700, 100);
+            health.reset();
+            enemy.setActive(true).setVisible(true);
+            health.setActive(true).setVisible(true);
+        }
+
+        function turretFireEvent(turret, turretbullets, enemy, platform, boxes) {
+            var bullet = turretbullets.get();
+            
+            if (bullet) {
+                bullet.fire(turret, turret.rotation);
+                this.physics.add.collider(bullet, platform, groundHitCallback, null, this);
+                for(enemy_be of enemy.getChildren()) {
+                    this.physics.add.collider(bullet, enemy_be, enemyHitCallback, null, this).overlapOnly = true;
+                }
+                for(box of boxes.getChildren()) {
+                    this.physics.add.collider(bullet, box, boxHitCallback, null, this);
+                }
+                if (boss_activate) {
+                    // this.physics.add.overlap(bullet, boss, function(){
+                    //     bullet.destroy();
+                    // }, null, this);
+                    this.physics.add.overlap(bullet, boss, bossHitCallback, null, this);
+                }
+            }
+        }
+
+        function enemyAttacks(player, enemy, platforms, scene) {
+            // if (enemy ==)
+            for (enemy_pe of enemy.getChildren()) {
+                if (Math.abs(player.x - enemy_pe.x) <= 400 && Math.abs(player.y - enemy_pe.y) <= 250) {
+                    var bullet_e = enemyBullets.get();
+                    var enemybulletscope = {
+                        x: enemy_pe.x,
+                        y: enemy_pe.y
+                    };
+                    var angle_pe = Phaser.Math.Angle.Between(enemy_pe.x, enemy_pe.y, player.x, player.y);
+                    if (bullet_e) {
+                        bullet_e.fire(enemybulletscope, angle_pe);
+                        bullet_e.setTintFill('0x0000ff');
+                        scene.physics.add.collider(bullet_e, platforms, groundHitCallback, null, scene);
+                        scene.physics.add.overlap(bullet_e, player, playerHitCallback, null, scene);
+                    } 
+                }
+            }
+        }
+
+        function playerHitCallback(bullet, player) {
+            bullet.destroy();
+            if(playerHealth.decrease(10) && playerHealth.visible == true) {
+                playerHealth.setVisible(false);
+                playerStamina.setVisible(false);
+                timerStopper = true;
+                this.physics.world.pause();
+                mainCamera.pan(mainCamera.midPoint.x, mainCamera.midPoint.y, 3000, 'Linear', false, function(camera, progress, x, y){
+                    player.alpha -= 0.01;
+                    if(progress == 1) {
+                        this.add.image(mainCamera.midPoint.x, mainCamera.midPoint.y - 100, 'gameover').setDepth(80);
+                        retry = this.add.image(mainCamera.midPoint.x, mainCamera.midPoint.y + 200, 'retry').setDepth(80);
+                        retry.setInteractive(); 
+                        retry.once('pointerup', function(){
+                            mainCamera.fade(1000, 16, 16, 16);
+                            mainCamera.once('camerafadeoutcomplete', function(){
+                                boss_timer = 0;
+                                gameClock = 0;
+                                minuteClock = 0;
+                                score = 0;
+                                boss_activate = false;
+                                cameraActiveAreaX = 800;
+                                cameraActiveAreaY = 900;
+                                timerStopper = false;
+                                this.scene.restart();
+                            }, this);
+                        }, this);
+                    }
+                }, this);
+                // this.time.delayedCall(3000, function(){
+                //     boss_timer = 0;
+                //     gameClock = 0;
+                //     minuteClock = 0;
+                //     score = 0;
+                //     boss_activate = false;
+                //     cameraActiveAreaX = 800;
+                //     cameraActiveAreaY = 900;
+                //     timerStopper = false
+                //     this.scene.restart();
+                // }, null, this);
+            }
+        }
+
+        function bossActivateEvent(scene) {
+            boss_activate = true;
+            cameraActiveAreaX += 800;
+            cameraActiveAreaY += 600;
+        }
+
+        function bossHitCallback(bullet, boss) {
+            if (bullet.active === true) {
+                bullet.destroy();
+                if (boss.active === true) {
+                    if (bossHealth.decrease(10) && boss_activate) {
+                        boss_activate = false;
+                        timerStopper = true;
+                        bossHealth.setVisible(false);
+                        scoreArea.setDepth(75);
+                        this.physics.world.pause();
+                        mainCamera.stopFollow();
+                        playerHealth.setVisible(false);
+                        playerStamina.setVisible(false);
+                        mainCamera.pan(boss.x, boss.y, 500, 'Linear', false, function(camera, progress, x, y){
+                            if (progress == 1) {
+                                this.time.delayedCall(1500, function(){
+                                    mainCamera.pan(boss.x, boss.y, 2500, 'Linear', false, function(camera, progress, x, y){
+                                        boss.alpha -= 1 / 20;
+                                    });
+                                    this.time.delayedCall(2500, function(){
+                                        // boss_activate = false;
+                                        boss.setVisible(false);
+                                        this.add.text(200, 200, 'life:      ' + String(Math.floor(playerHealth.value / 3))).setDepth(50).setScrollFactor(0, 0).setScale(3, 3).setColor('0xffffff');
+                                        timertext.setPosition(200, 300).setScale(3, 3).setDepth(80);
+                                        scoretext.setPosition(200, 400).setScale(3, 3).setDepth(80);
+                                        this.add.image(mainCamera.midPoint.x, mainCamera.midPoint.y - 200, 'clear').setDepth(80);
+                                        retry = this.add.image(mainCamera.midPoint.x, mainCamera.midPoint.y + 200, 'retry').setDepth(80);
+                                        retry.setInteractive();
+                                        retry.once('pointerup', function(){
+                                            mainCamera.fade(1000, 16, 16, 16);
+                                            mainCamera.once('camerafadeoutcomplete', function(){
+                                                boss_timer = 0;
+                                                gameClock = 0;
+                                                minuteClock = 0;
+                                                score = 0;
+                                                boss_activate = false;
+                                                cameraActiveAreaX = 800;
+                                                cameraActiveAreaY = 900;
+                                                timerStopper = false;
+                                                this.scene.restart();
+                                            }, this);
+                                        }, this);
+                                        this.physics.world.resume();
+                                    }, null, this);
+                                    // this.physics.world.resume();
+                                    // mainCamera.startFollow(player);
+                                }, null, this);
+                            }
+                        });
+                    }
+                    // bossHealth.decrease(10);
+                }
+            }
+        }
+
+        function bossSlashHitCallback(slash, boss) {
+            if (slash.active === true) {
+                if (boss.active === true) {
+                    // if (enemy.health.decrease(2)) {
+                    //     enemy.health.destroy();
+                    //     enemy.destroy();
+                    // }
+                    bossHealth.decrease(2);
+                }
+            }
+        }
+
+        function bossAttacks(player, boss, type, scene) {
+            if (type == 1)
+            {
+                var bullet_e = enemyBullets.get();
+                var bossbulletscope = {
+                    x: boss.x,
+                    y: boss.y
+                };
+                var angle_pb = Phaser.Math.Angle.Between(boss.x, boss.y,
+                player.x + Math.floor(Math.random() * 101) - 50,
+                player.y + Math.floor(Math.random() * 101) - 50);
+                if (bullet_e) {
+                    bullet_e.fire(bossbulletscope, angle_pb);
+                    bullet_e.setTintFill('0x0000ff');
+                    scene.physics.add.collider(bullet_e, platforms, groundHitCallback, null, scene);
+                    scene.physics.add.overlap(bullet_e, player, playerHitCallback, null, scene);
+                }
+            }
+            else if (type == 2)
+            {
+                var bullet_e = enemyBullets.get();
+                var bossbulletscope = {
+                    x: boss.x,
+                    y: boss.y
+                };
+                var angle_pb = Phaser.Math.Angle.Between(boss.x, boss.y, boss.x, 0);
+                if (bullet_e) {
+                    bullet_e.fire(bossbulletscope, angle_pb);
+                    bullet_e.setScale(2, 3);
+
+                    bullet_e.setTintFill('0x0000ff');
+                    scene.physics.add.collider(bullet_e, platforms, groundHitCallback, null, scene);
+                    scene.physics.add.overlap(bullet_e, player, playerHitCallback, null, scene);
+                    scene.time.delayedCall(500, function(){
+                        this.physics.world.on('worldstep', function missile(event){
+                            if (bullet_e.active == true && player) {
+                                scene.physics.moveToObject(bullet_e, player, 200);
+                                var angle_bp = Phaser.Math.Angle.Between(bullet_e.x, bullet_e.y, player.x, player.y);
+                                bullet_e.setRotation(angle_bp);
+                            }
+                        }, this);
+                    }, [bullet_e, player, boss], scene);
+                    scene.time.delayedCall(3000, function(){
+                        this.physics.world.off('worldstep');
+                        // bullet_e.destroy();
+                    }, [bullet_e, player], scene);
+                }
+
+            }
+        }
+
+        // function missile(bullet, player, scene) {
+        //     if (bullet && player) {
+        //         scene.physics.moveToObject(bullet, player, 200);
+        //     }
+        // }
+
+        function timeRound(minute){
+            if (minute < 10) {
+                return '0' + String(minute)
+            } else {
+                return String(minute)
+            }
+        }
+    </script>
+</body>
+</html>
