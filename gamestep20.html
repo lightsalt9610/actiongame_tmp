@@ -8,6 +8,11 @@
     <meta charset="UTF-8">
     <!-- phaserの読み込み-->
     <script src="//cdn.jsdelivr.net/npm/phaser@3.24.1/dist/phaser.js"></script>
+    <style>
+        canvas {
+            margin: 200px;
+        }
+    </style>
 </head>
 <body>
     <script type="text/javascript">
@@ -315,6 +320,8 @@
         }
 
         function create(){
+            this.physics.world.fixedStep = true;
+            
             this.physics.world.addListener('bossActivateEvent', bossActivateEvent, this);
             
             scoreArea = this.add.rectangle(675, 30, 250, 60, '0xf0f0f0');
