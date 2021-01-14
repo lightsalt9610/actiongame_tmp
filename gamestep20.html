@@ -795,7 +795,19 @@
                 playerTurrets_handover = 3;
             });
             
-            
+            this.input.keyboard.on('keydown-R', function(){
+                mainCamera.fade(1000, 16, 16, 16);
+                    mainCamera.once('camerafadeoutcomplete', function(){
+                        boss_timer = 0;
+                        gameClock = 0;
+                        minuteClock = 0;
+                        score = 0;
+                        boss_activate = false;
+                        cameraActiveAreaX = 800;
+                        cameraActiveAreaY = 900;
+                        timerStopper = false;
+                        this.scene.restart();
+            }
 
             var enemys = enemyGroup.get().setActive(true).setVisible(true);
             enemys.spawnEvent(2000, 2150);
